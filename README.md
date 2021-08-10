@@ -1,0 +1,3 @@
+# HomeGenie
+
+Home automation tools
