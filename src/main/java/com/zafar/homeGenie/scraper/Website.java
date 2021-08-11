@@ -7,9 +7,9 @@ import java.util.List;
 
 public class Website {
     private String name;
-    private List<WebPage> pageList;
+    private List<CrawlTask> pageList;
 
-    public Website(String name, List<WebPage> pageList) {
+    public Website(String name, List<CrawlTask> pageList) {
         this.name = name;
         this.pageList = pageList;
     }
@@ -23,16 +23,16 @@ public class Website {
         return this;
     }
 
-    public List<WebPage> getPageList() {
+    public List<CrawlTask> getPageList() {
         return pageList;
     }
 
-    public Website setPageList(List<WebPage> pageList) {
+    public Website setPageList(List<CrawlTask> pageList) {
         this.pageList = pageList;
         return this;
     }
 
-    public static class WebPage {
+    public static class CrawlTask {
 
         private String address;
         private String name;
@@ -41,7 +41,7 @@ public class Website {
             return address;
         }
 
-        public WebPage setAddress(String address) {
+        public CrawlTask setAddress(String address) {
             this.address = address;
             return this;
         }
@@ -50,7 +50,7 @@ public class Website {
             return name;
         }
 
-        public WebPage setName(String name) {
+        public CrawlTask setName(String name) {
             this.name = name;
             return this;
         }
@@ -61,7 +61,7 @@ public class Website {
 
             if (o == null || getClass() != o.getClass()) return false;
 
-            WebPage webPage = (WebPage) o;
+            CrawlTask webPage = (CrawlTask) o;
 
             return new EqualsBuilder().append(name, webPage.name).isEquals();
         }

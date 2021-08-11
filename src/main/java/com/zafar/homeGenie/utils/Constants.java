@@ -8,4 +8,7 @@ public interface Constants {
     String ROUTER_TV_POWER = "ROUTER_TV_POWER";
     String RESULT = "RESULT";
     String TARGET_DEVICE = "samsung";
+    double RX_THRESHOLD_BYTES = 100000;
+    double TX_THRESHOLD_BYTES = 100000;
+    String SHOULD_TV_BE_OFF = "SHOULD_TV_BE_OFF";
 }

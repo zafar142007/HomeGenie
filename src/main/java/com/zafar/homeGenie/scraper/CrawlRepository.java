@@ -1,5 +1,6 @@
 package com.zafar.homeGenie.scraper;
 
+import com.zafar.homeGenie.repository.CrawlProvider;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.stereotype.Component;
@@ -10,12 +11,12 @@ import java.util.Map;
 @Component
 public class CrawlRepository {
     private final static Logger logger = LogManager.getLogger(CrawlRepository.class);
-    private Map<String, WebsiteCrawl> crawlMap = new HashMap<>();
+    private Map<String, CrawlProvider> crawlMap = new HashMap<>();
 
-    public WebsiteCrawl getCrawl(String crawlId) {
+    public CrawlProvider getCrawl(String crawlId) {
         return crawlMap.get(crawlId);
     }
-    public void putCrawl(String crawlId, WebsiteCrawl websiteCrawl){
-        crawlMap.put(crawlId, websiteCrawl);
+    public void putCrawl(String crawlId, CrawlProvider crawlProvider){
+        crawlMap.put(crawlId, crawlProvider);
     }
 }

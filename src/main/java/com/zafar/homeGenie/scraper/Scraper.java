@@ -42,10 +42,10 @@ public class Scraper implements HandlerFunction<ServerResponse> {
         webClient.setAjaxController(new NicelyResynchronizingAjaxController());
         Map<String, Object> context = new HashMap<>();
         return scrapeRequestMono.flatMap(scrapeRequest -> {
-            WebsiteCrawl crawl = crawlRepository.getCrawl(scrapeRequest.getCrawlId());
-            for (Map.Entry<Website.WebPage, Function<Map<String, Object>, Map<String, Object>>> crawlStep :
+            WebsiteCrawl crawl = crawlRepository.getCrawl(scrapeRequest.getCrawlId()).provide();
+            for (Map.Entry<Website.CrawlTask, Function<Map<String, Object>, Map<String, Object>>> crawlStep :
                     crawl.getModusOperandi().entrySet()) {
-                Website.WebPage webPage = crawlStep.getKey();
+                Website.CrawlTask webPage = crawlStep.getKey();
                 Page page= null;
                 try {
                     if(webPage.getAddress()!=null && !webPage.getAddress().isEmpty()) {
@@ -59,6 +59,7 @@ public class Scraper implements HandlerFunction<ServerResponse> {
                     return Mono.error(e);
                 }
                 if (page.isHtmlPage()) {
+                    logger.info("page {} loading", crawlStep.getKey().getName());
                     crawlStep.getValue().apply(context);
                     logger.info("page {} loaded", crawlStep.getKey().getName());
                 }

@@ -9,11 +9,11 @@ import java.util.function.Function;
 
 public class WebsiteCrawl {
 
-    private LinkedHashMap<Website.WebPage, Function<Map<String, Object>, Map<String, Object>>> modusOperandi;
+    private LinkedHashMap<Website.CrawlTask, Function<Map<String, Object>, Map<String, Object>>> modusOperandi;
     @JsonIgnore
     private String crawlId;
 
-    public WebsiteCrawl(LinkedHashMap<Website.WebPage, Function<Map<String, Object>, Map<String, Object>>> modusOperandi) {
+    public WebsiteCrawl(LinkedHashMap<Website.CrawlTask, Function<Map<String, Object>, Map<String, Object>>> modusOperandi) {
         this.modusOperandi = modusOperandi;
         crawlId = UUID.randomUUID().toString();
     }
@@ -22,7 +22,7 @@ public class WebsiteCrawl {
         return crawlId;
     }
 
-    public LinkedHashMap<Website.WebPage, Function<Map<String, Object>, Map<String, Object>>> getModusOperandi() {
+    public LinkedHashMap<Website.CrawlTask, Function<Map<String, Object>, Map<String, Object>>> getModusOperandi() {
         return modusOperandi;
     }
 
