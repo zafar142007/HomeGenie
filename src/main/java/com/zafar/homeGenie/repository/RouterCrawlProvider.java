@@ -1,10 +1,9 @@
 package com.zafar.homeGenie.repository;
 
-import com.gargoylesoftware.htmlunit.Page;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.*;
-import com.zafar.homeGenie.scraper.CrawlRepository;
 import com.zafar.homeGenie.scraper.CrawlJob;
+import com.zafar.homeGenie.scraper.CrawlRepository;
 import com.zafar.homeGenie.scraper.CrawlStep;
 import com.zafar.homeGenie.scraper.WebsiteCrawl;
 import com.zafar.homeGenie.utils.Constants;
@@ -16,7 +15,10 @@ import org.springframework.stereotype.Component;
 import javax.annotation.PostConstruct;
 import java.io.IOException;
 import java.net.URL;
-import java.util.*;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Component
 public class RouterCrawlProvider extends CrawlProvider {
@@ -155,6 +157,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                                 result1.put("Tx", Double.parseDouble(tile.getVisibleText().split("/")[1].split(" ")[0]) * 1000000);
                             }
                             result.put(System.currentTimeMillis(), result1);
+                            logger.info("stats {}", result1);
                             Map<Long, Map<String, Object>> r = (Map<Long, Map<String, Object>>) (map.get(Constants.RESULT));
                             if (r != null) {
                                 r.putAll(result);
@@ -167,6 +170,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                     }
                 } catch (Exception e) {
                     logger.error(e);
+                    e.printStackTrace();
                     map.put(Constants.ABORT, true);
                     map.put(Constants.ABORT_REASON, e.getMessage());
                 }

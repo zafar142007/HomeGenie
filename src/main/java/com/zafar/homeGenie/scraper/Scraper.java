@@ -3,6 +3,7 @@ package com.zafar.homeGenie.scraper;
 import com.gargoylesoftware.htmlunit.BrowserVersion;
 import com.gargoylesoftware.htmlunit.NicelyResynchronizingAjaxController;
 import com.gargoylesoftware.htmlunit.WebClient;
+import com.gargoylesoftware.htmlunit.html.HtmlPage;
 import com.zafar.homeGenie.domain.ScrapeRequest;
 import com.zafar.homeGenie.domain.ScrapeResponse;
 import com.zafar.homeGenie.utils.Constants;
@@ -49,6 +50,7 @@ public class Scraper implements HandlerFunction<ServerResponse> {
                     response = ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
                             .bodyValue(new ScrapeResponse()
                                     .addField(Constants.ABORT_REASON, context.getOrDefault(Constants.ABORT_REASON, "Unexpected error occurred")));
+                    logger.error("Aborting {}", context.get(Constants.ABORT_REASON));
                     break;
                 }
             }
