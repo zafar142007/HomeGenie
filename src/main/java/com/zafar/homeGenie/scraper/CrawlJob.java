@@ -5,30 +5,30 @@ import org.apache.commons.lang3.builder.HashCodeBuilder;
 
 import java.util.List;
 
-public class Website {
+public class CrawlJob {
     private String name;
-    private List<CrawlTask> pageList;
+    private List<CrawlTask> taskList;
 
-    public Website(String name, List<CrawlTask> pageList) {
+    public CrawlJob(String name, List<CrawlTask> pageList) {
         this.name = name;
-        this.pageList = pageList;
+        this.taskList = pageList;
     }
 
     public String getName() {
         return name;
     }
 
-    public Website setName(String name) {
+    public CrawlJob setName(String name) {
         this.name = name;
         return this;
     }
 
-    public List<CrawlTask> getPageList() {
-        return pageList;
+    public List<CrawlTask> getTaskList() {
+        return taskList;
     }
 
-    public Website setPageList(List<CrawlTask> pageList) {
-        this.pageList = pageList;
+    public CrawlJob setTaskList(List<CrawlTask> taskList) {
+        this.taskList = taskList;
         return this;
     }
 

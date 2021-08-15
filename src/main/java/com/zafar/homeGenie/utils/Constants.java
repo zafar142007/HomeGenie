@@ -11,4 +11,7 @@ public interface Constants {
     double RX_THRESHOLD_BYTES = 100000;
     double TX_THRESHOLD_BYTES = 100000;
     String SHOULD_TV_BE_OFF = "SHOULD_TV_BE_OFF";
+    String ABORT = "ABORT";
+    String ABORT_REASON = "ABORT_REASON";
+    String WEBCLIENT = "WEBCLIENT";
 }

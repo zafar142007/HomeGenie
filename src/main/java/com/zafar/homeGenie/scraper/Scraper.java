@@ -2,25 +2,21 @@ package com.zafar.homeGenie.scraper;
 
 import com.gargoylesoftware.htmlunit.BrowserVersion;
 import com.gargoylesoftware.htmlunit.NicelyResynchronizingAjaxController;
-import com.gargoylesoftware.htmlunit.Page;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.zafar.homeGenie.domain.ScrapeRequest;
+import com.zafar.homeGenie.domain.ScrapeResponse;
 import com.zafar.homeGenie.utils.Constants;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.server.HandlerFunction;
 import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.reactive.function.server.ServerResponse;
 import reactor.core.publisher.Mono;
 
-import java.io.IOException;
-import java.net.URL;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Function;
 
 @Service
 public class Scraper implements HandlerFunction<ServerResponse> {
@@ -40,32 +36,27 @@ public class Scraper implements HandlerFunction<ServerResponse> {
         webClient.getOptions().setRedirectEnabled(true);
         webClient.setWebConnection(new HttpWebConnectionWrapper(webClient));
         webClient.setAjaxController(new NicelyResynchronizingAjaxController());
-        Map<String, Object> context = new HashMap<>();
         return scrapeRequestMono.flatMap(scrapeRequest -> {
+            Mono<ServerResponse> response = null;
             WebsiteCrawl crawl = crawlRepository.getCrawl(scrapeRequest.getCrawlId()).provide();
-            for (Map.Entry<Website.CrawlTask, Function<Map<String, Object>, Map<String, Object>>> crawlStep :
-                    crawl.getModusOperandi().entrySet()) {
-                Website.CrawlTask webPage = crawlStep.getKey();
-                Page page= null;
-                try {
-                    if(webPage.getAddress()!=null && !webPage.getAddress().isEmpty()) {
-                        page = webClient.getPage(new URL(webPage.getAddress()));
-                        context.put(Constants.CURRENT_PAGE, page);
-                    } else {
-                        page = (Page) context.get(Constants.CURRENT_PAGE);
-                    }
-                } catch (IOException e) {
-                    logger.error("Issue with URL", e);
-                    return Mono.error(e);
+            crawl.getCrawlContext().getContextMap().put(Constants.WEBCLIENT, webClient);
+            Map<String, Object> context = crawl.getCrawlContext().getContextMap();
+            for (CrawlStep crawlStep : crawl.getModusOperandi()) {
+                logger.info("step {} loading", crawlStep.getName());
+                crawlStep.getCrawlFunction().apply(null);
+                logger.info("step {} loaded", crawlStep.getName());
+                if (context.get(Constants.ABORT) != null && context.get(Constants.ABORT) == Boolean.TRUE) {
+                    response = ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .bodyValue(new ScrapeResponse()
+                                    .addField(Constants.ABORT_REASON, context.getOrDefault(Constants.ABORT_REASON, "Unexpected error occurred")));
+                    break;
                 }
-                if (page.isHtmlPage()) {
-                    logger.info("page {} loading", crawlStep.getKey().getName());
-                    crawlStep.getValue().apply(context);
-                    logger.info("page {} loaded", crawlStep.getKey().getName());
-                }
-
             }
-            return ServerResponse.ok().body(BodyInserters.fromValue(context.getOrDefault(Constants.RESULT, "")));
+            webClient.close();
+            if (response == null) {
+                response = ServerResponse.ok().bodyValue(new ScrapeResponse().addField(Constants.RESULT, context.getOrDefault(Constants.RESULT, "")));
+            }
+            return response;
         });
     }
 
