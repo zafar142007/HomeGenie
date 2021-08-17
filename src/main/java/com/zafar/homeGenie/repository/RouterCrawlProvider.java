@@ -141,21 +141,16 @@ public class RouterCrawlProvider extends CrawlProvider {
                         return null;
                     }
                     Thread.sleep(5000);
+                    Map<String, Double> byteConversion = Map.of("Kbyte", 1000.0, "MByte", 1000000.0, "Gbyte", 1000000000.0);
                     List<DomNode> tiles = htmlPage.querySelectorAll("span.info");
                     for (DomNode tile : tiles) {
-                        if ((tile.getVisibleText()).contains("byte")) {
+                        if ((tile.getVisibleText()).contains("byte")) { // something like "111.3 Kbyte/121.0 MByte"
                             Map<Long, Map<String, Object>> result = new LinkedHashMap<>();
                             Map<String, Object> result1 = new HashMap<>();
-                            if (tile.getVisibleText().split("/")[0].contains("Kbyte")) {
-                                result1.put("Rx", Double.parseDouble(tile.getVisibleText().split("/")[0].split(" ")[0]) * 1000);
-                            } else if (tile.getVisibleText().split("/")[0].contains("Mbyte")) {
-                                result1.put("Rx", Double.parseDouble(tile.getVisibleText().split("/")[0].split(" ")[0]) * 1000000);
-                            }
-                            if (tile.getVisibleText().split("/")[1].contains("Kbyte")) {
-                                result1.put("Tx", Double.parseDouble(tile.getVisibleText().split("/")[1].split(" ")[0]) * 1000);
-                            } else if (tile.getVisibleText().split("/")[1].contains("Mbyte")) {
-                                result1.put("Tx", Double.parseDouble(tile.getVisibleText().split("/")[1].split(" ")[0]) * 1000000);
-                            }
+                            String unit = tile.getVisibleText().split("/")[0].split(" ")[1];
+                            result1.put("Rx", Double.parseDouble(tile.getVisibleText().split("/")[0].split(" ")[0]) * byteConversion.get(unit)); //put in bytes
+                            unit = tile.getVisibleText().split("/")[1].split(" ")[1];
+                            result1.put("Tx", Double.parseDouble(tile.getVisibleText().split("/")[1].split(" ")[0]) * byteConversion.get(unit)); //in bytes
                             result.put(System.currentTimeMillis(), result1);
                             logger.info("stats {}", result1);
                             Map<Long, Map<String, Object>> r = (Map<Long, Map<String, Object>>) (map.get(Constants.RESULT));
