@@ -165,11 +165,11 @@ public class RouterCrawlProvider extends CrawlProvider {
                 WebsiteCrawl.CrawlContext crawlContext = getContext();
                 Map<String, Object> map = crawlContext.getContextMap();
                 if ((Boolean) (map.get(Constants.SHOULD_TV_BE_OFF)) == true
-                        && storage.size()==Constants.NUMBER_OF_CONSECUTIVE_DETECTONS
+                        && storage.size() == Constants.NUMBER_OF_CONSECUTIVE_DETECTONS
                         && storage.entrySet().stream().allMatch(e -> e.getValue())) {
                     logger.info("turning off tv");
                     String key = readKey();
-                    tvOffUrl=tvOffUrl.replace("[key]", key);
+                    tvOffUrl = tvOffUrl.replace("[key]", key);
                     org.springframework.web.reactive.function.client.WebClient webClient = org.springframework.web.reactive.function.client.WebClient.builder()
                             .baseUrl(tvOffUrl)
                             .build();
@@ -232,8 +232,11 @@ public class RouterCrawlProvider extends CrawlProvider {
                         map.put(Constants.ABORT_REASON, "Target device not found");
                         return null;
                     }
-                    Thread.sleep(5000);
-                    Map<String, Double> byteConversion = Map.of("Kbyte", 1000.0, "Mbyte", 1000000.0, "Gbyte", 1000000000.0);
+                    Thread.sleep(10000);
+                    Map<String, Double> byteConversion = new HashMap<>();
+                    byteConversion.put("Kbyte", 1000.0);
+                    byteConversion.put("Mbyte", 1000000.0);
+                    byteConversion.put("Gbyte", 1000000000.0);
                     List<DomNode> tiles = htmlPage.querySelectorAll("span.info");
                     for (DomNode tile : tiles) {
                         if ((tile.getVisibleText()).contains("byte")) { // something like "111.3 Kbyte/121.0 MByte"
@@ -277,7 +280,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                 Map<String, Object> map = crawlContext.getContextMap();
                 HtmlPage htmlPage = (HtmlPage) map.get(Constants.CURRENT_PAGE);
                 try {
-                    Thread.sleep(3000);
+                    Thread.sleep(6000);
                 } catch (InterruptedException e) {
                     logger.error(e);
                 }
@@ -332,7 +335,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                 }
 
                 try {
-                    Thread.sleep(3000);
+                    Thread.sleep(6000);
                 } catch (InterruptedException e) {
                     logger.error(e);
                 }
