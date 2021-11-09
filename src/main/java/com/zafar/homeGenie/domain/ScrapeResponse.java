@@ -35,4 +35,12 @@ public class ScrapeResponse {
     public ScrapeResponse(Map<String, Object> result) {
         this.result = result;
     }
+
+    @Override
+    public String toString() {
+        return "ScrapeResponse{" +
+                "result=" + result +
+                ", timestamp=" + timestamp +
+                '}';
+    }
 }

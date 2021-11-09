@@ -6,6 +6,7 @@ import com.gargoylesoftware.htmlunit.WebClient;
 import com.zafar.homeGenie.domain.ScrapeRequest;
 import com.zafar.homeGenie.domain.ScrapeResponse;
 import com.zafar.homeGenie.utils.Constants;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +26,7 @@ public class Scraper implements HandlerFunction<ServerResponse> {
     @Autowired
     private CrawlRepository crawlRepository;
 
-    protected Mono<ServerResponse> scrape(Mono<ScrapeRequest> scrapeRequestMono) {
+    public Mono<ScrapeResponse> scrape(Mono<ScrapeRequest> scrapeRequestMono) {
         WebClient webClient = new WebClient(BrowserVersion.CHROME);
         webClient.getOptions().setDownloadImages(true);
         webClient.getOptions().setThrowExceptionOnScriptError(false);
@@ -37,7 +38,7 @@ public class Scraper implements HandlerFunction<ServerResponse> {
         webClient.setWebConnection(new HttpWebConnectionWrapper(webClient));
         webClient.setAjaxController(new NicelyResynchronizingAjaxController());
         return scrapeRequestMono.flatMap(scrapeRequest -> {
-            Mono<ServerResponse> response = null;
+            Mono<ScrapeResponse> response = null;
             WebsiteCrawl crawl = crawlRepository.getCrawl(scrapeRequest.getCrawlId()).provide();
             crawl.getCrawlContext().getContextMap().put(Constants.WEBCLIENT, webClient);
             Map<String, Object> context = crawl.getCrawlContext().getContextMap();
@@ -46,16 +47,15 @@ public class Scraper implements HandlerFunction<ServerResponse> {
                 crawlStep.getCrawlFunction().apply(null);
                 logger.info("step {} loaded", crawlStep.getName());
                 if (context.get(Constants.ABORT) != null && context.get(Constants.ABORT) == Boolean.TRUE) {
-                    response = ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                            .bodyValue(new ScrapeResponse()
-                                    .addField(Constants.ABORT_REASON, context.getOrDefault(Constants.ABORT_REASON, "Unexpected error occurred")));
+                    response = Mono.just(new ScrapeResponse()
+                            .addField(Constants.ABORT_REASON, context.getOrDefault(Constants.ABORT_REASON, "Unexpected error occurred")));
                     logger.error("Aborting {}", context.get(Constants.ABORT_REASON));
                     break;
                 }
             }
             webClient.close();
             if (response == null) {
-                response = ServerResponse.ok().bodyValue(new ScrapeResponse().addField(Constants.RESULT, context.getOrDefault(Constants.RESULT, "")));
+                response = Mono.just(new ScrapeResponse().addField(Constants.RESULT, context.getOrDefault(Constants.RESULT, "")));
             }
             return response;
         });
@@ -64,7 +64,20 @@ public class Scraper implements HandlerFunction<ServerResponse> {
     @Override
     public Mono<ServerResponse> handle(ServerRequest serverRequest) {
         try {
-            return scrape(serverRequest.bodyToMono(ScrapeRequest.class));
+            Mono<ScrapeResponse> scrapeResponseMono = scrape(serverRequest.bodyToMono(ScrapeRequest.class));
+            Mono<ServerResponse> r = scrapeResponseMono.flatMap((resp) -> {
+                Mono<ServerResponse> response;
+                if (StringUtils.isEmpty((String) resp.getResult().get(Constants.ABORT_REASON))) {
+                    response = ServerResponse.status(HttpStatus.OK)
+                            .bodyValue(resp);
+                } else {
+                    response = ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .bodyValue(resp);
+                }
+                logger.info("http status result: {}", resp);
+                return response;
+            });
+            return r;
         } catch (Exception e) {
             logger.error(e);
             return Mono.error(e);

@@ -2,10 +2,9 @@ package com.zafar.homeGenie.repository;
 
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.*;
-import com.zafar.homeGenie.scraper.CrawlJob;
-import com.zafar.homeGenie.scraper.CrawlRepository;
-import com.zafar.homeGenie.scraper.CrawlStep;
-import com.zafar.homeGenie.scraper.WebsiteCrawl;
+import com.zafar.homeGenie.domain.ScrapeRequest;
+import com.zafar.homeGenie.domain.ScrapeResponse;
+import com.zafar.homeGenie.scraper.*;
 import com.zafar.homeGenie.utils.Constants;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -14,7 +13,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.server.ServerResponse;
 import reactor.core.publisher.Mono;
 
 import javax.annotation.PostConstruct;
@@ -33,14 +35,55 @@ public class RouterCrawlProvider extends CrawlProvider {
 
     private Map<Long, Boolean> storage = new TreeMap<>();
 
-    @Value("${tv.off.url}")
+    @Autowired
+    private Scraper scraper;
+
+    @Value("${" + Constants.ROUTER_TV_POWER + ".tv.off.url}")
     private String tvOffUrl;
 
+    @Value("${" + Constants.ROUTER_TV_POWER + ".crawl.schedule}")
+    private String crawlSchedule;
+
     private String key;
+
+    private ThreadPoolTaskScheduler executorService = new ThreadPoolTaskScheduler();
 
     @PostConstruct
     public void init() {
         crawlRepository.putCrawl(getId(), this);
+        if (StringUtils.isNotEmpty(crawlSchedule)) {
+            scheduleCrawl();
+        }
+    }
+
+    private void scheduleCrawl() {
+
+        executorService.setPoolSize(2);
+        executorService.initialize();
+        executorService.schedule(() -> {
+            logger.info("starting scheduled crawl");
+            ScrapeRequest request = new ScrapeRequest(Constants.ROUTER_TV_POWER);
+            Mono<ScrapeRequest> requestMono = Mono.just(request);
+
+            Mono<ScrapeResponse> responseMono = scraper.scrape(requestMono);
+            Mono<ServerResponse> r = responseMono.flatMap((resp) -> {
+                Mono<ServerResponse> response;
+                if (StringUtils.isEmpty((String) resp.getResult().get(Constants.ABORT_REASON))) {
+                    response = ServerResponse.status(HttpStatus.OK)
+                            .bodyValue(resp);
+                } else {
+                    response = ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .bodyValue(resp);
+                }
+                logger.info("cron http status result: {}", resp);
+                return response;
+
+            });
+            r.block();
+            logger.info("finished scheduled crawl");
+
+        }, new CronTrigger(crawlSchedule));
+        logger.info("scheduled crawl at frequency {}", crawlSchedule);
     }
 
     @Override
@@ -90,6 +133,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                 avgTx = totalDiffTx / (readings.size() - 1);
                 logger.info("avgRx {} B/s, avgTx {} B/s", avgRx, avgTx);
                 if (avgRx < Constants.RX_THRESHOLD_BYTES && avgTx < Constants.TX_THRESHOLD_BYTES) {
+                    logger.info("TV should be off");
                     map.put(Constants.SHOULD_TV_BE_OFF, true);
                     recordDetection(true);
                 } else {
@@ -121,10 +165,11 @@ public class RouterCrawlProvider extends CrawlProvider {
                 WebsiteCrawl.CrawlContext crawlContext = getContext();
                 Map<String, Object> map = crawlContext.getContextMap();
                 if ((Boolean) (map.get(Constants.SHOULD_TV_BE_OFF)) == true
+                        && storage.size()==Constants.NUMBER_OF_CONSECUTIVE_DETECTONS
                         && storage.entrySet().stream().allMatch(e -> e.getValue())) {
                     logger.info("turning off tv");
                     String key = readKey();
-                    tvOffUrl.replace("{key}", key);
+                    tvOffUrl=tvOffUrl.replace("[key]", key);
                     org.springframework.web.reactive.function.client.WebClient webClient = org.springframework.web.reactive.function.client.WebClient.builder()
                             .baseUrl(tvOffUrl)
                             .build();
@@ -135,6 +180,8 @@ public class RouterCrawlProvider extends CrawlProvider {
                         logger.info("successfully triggered switch off");
                     } else {
                         map.put(Constants.RESULT, false);
+                        logger.error("failed to trigger switch off");
+
                     }
                 } else {
                     map.put(Constants.RESULT, false);
