@@ -7,18 +7,22 @@ import com.zafar.homeGenie.scraper.CrawlRepository;
 import com.zafar.homeGenie.scraper.CrawlStep;
 import com.zafar.homeGenie.scraper.WebsiteCrawl;
 import com.zafar.homeGenie.utils.Constants;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
 
 import javax.annotation.PostConstruct;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.Duration;
+import java.util.*;
 
 @Component
 public class RouterCrawlProvider extends CrawlProvider {
@@ -26,6 +30,13 @@ public class RouterCrawlProvider extends CrawlProvider {
 
     @Autowired
     private CrawlRepository crawlRepository;
+
+    private Map<Long, Boolean> storage = new TreeMap<>();
+
+    @Value("${tv.off.url}")
+    private String tvOffUrl;
+
+    private String key;
 
     @PostConstruct
     public void init() {
@@ -39,8 +50,8 @@ public class RouterCrawlProvider extends CrawlProvider {
         crawlHomePage(crawl);
         crawlStatsPage(crawl);
         crawlStatsPage(crawl);//crawl again to find the difference in data consumed
-        findifTVIdle(crawl);//if the difference is high then TV is in use otherwise no
-        askAlexaToSwitchOff(crawl); //if not in use switch it off
+        findIfTVIdle(crawl);//if the difference is high then TV is in use otherwise no
+        switchOff(crawl); //if not in use switch it off
         return crawl;
     }
 
@@ -49,7 +60,7 @@ public class RouterCrawlProvider extends CrawlProvider {
         return Constants.ROUTER_TV_POWER;
     }
 
-    private void findifTVIdle(WebsiteCrawl crawl) {
+    private void findIfTVIdle(WebsiteCrawl crawl) {
         CrawlJob.CrawlTask analysis = new CrawlJob.CrawlTask();
         analysis.setName("analysis");
         WebsiteCrawl.CrawlFunction idleCheckFunction = crawl.new CrawlFunction() {
@@ -80,34 +91,68 @@ public class RouterCrawlProvider extends CrawlProvider {
                 logger.info("avgRx {} B/s, avgTx {} B/s", avgRx, avgTx);
                 if (avgRx < Constants.RX_THRESHOLD_BYTES && avgTx < Constants.TX_THRESHOLD_BYTES) {
                     map.put(Constants.SHOULD_TV_BE_OFF, true);
+                    recordDetection(true);
                 } else {
+                    logger.info("TV should not be off");
+                    recordDetection(false);
                     map.put(Constants.SHOULD_TV_BE_OFF, false);
                 }
                 return null;
             }
         };
-        CrawlStep idleCheck = new CrawlStep("idleChecke", idleCheckFunction);
+        CrawlStep idleCheck = new CrawlStep("idleCheck", idleCheckFunction);
         crawl.addCrawlStep(idleCheck);
     }
 
-    private void askAlexaToSwitchOff(WebsiteCrawl crawl) {
-        WebsiteCrawl.CrawlFunction alexa = crawl.new CrawlFunction() {
+    private void recordDetection(boolean detection) {
+        if (storage.entrySet().size() > Constants.NUMBER_OF_CONSECUTIVE_DETECTONS) {
+            //remove earliest entry
+            Map.Entry<Long, Boolean> entry = storage.entrySet().stream().findFirst().get();
+            storage.remove(entry.getKey());
+        }
+        storage.put(System.currentTimeMillis(), detection);
+    }
+
+    private void switchOff(WebsiteCrawl crawl) {
+        WebsiteCrawl.CrawlFunction turningOffTv = crawl.new CrawlFunction() {
 
             @Override
             public Void apply(Void unused) {
                 WebsiteCrawl.CrawlContext crawlContext = getContext();
                 Map<String, Object> map = crawlContext.getContextMap();
-                if ((Boolean) (map.get(Constants.SHOULD_TV_BE_OFF)) == true) {
+                if ((Boolean) (map.get(Constants.SHOULD_TV_BE_OFF)) == true
+                        && storage.entrySet().stream().allMatch(e -> e.getValue())) {
                     logger.info("turning off tv");
-                    map.put(Constants.RESULT, true);
+                    String key = readKey();
+                    tvOffUrl.replace("{key}", key);
+                    org.springframework.web.reactive.function.client.WebClient webClient = org.springframework.web.reactive.function.client.WebClient.builder()
+                            .baseUrl(tvOffUrl)
+                            .build();
+                    Mono<ResponseEntity<String>> responseMono = webClient.get().retrieve().toEntity(String.class);
+                    ResponseEntity<String> response = responseMono.block(Duration.ofSeconds(10));
+                    if (response.getStatusCode() == HttpStatus.OK) {
+                        map.put(Constants.RESULT, true);
+                        logger.info("successfully triggered switch off");
+                    } else {
+                        map.put(Constants.RESULT, false);
+                    }
                 } else {
                     map.put(Constants.RESULT, false);
                 }
                 return null;
             }
         };
-        CrawlStep instructAlexa = new CrawlStep("alexa", alexa);
+        CrawlStep instructAlexa = new CrawlStep("turn_off_tv", turningOffTv);
         crawl.addCrawlStep(instructAlexa);
+    }
+
+    private String readKey() {
+        if (StringUtils.isEmpty(key)) {
+            InputStream keyFile = getClass().getClassLoader().getResourceAsStream("tv_off_key.txt");
+            Scanner scanner = new Scanner(keyFile);
+            key = scanner.next();
+            return key;
+        } else return key;
     }
 
     private void crawlStatsPage(WebsiteCrawl crawl) {
@@ -119,7 +164,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                 Map<String, Object> map = crawlContext.getContextMap();
                 HtmlPage htmlPage = (HtmlPage) map.get(Constants.CURRENT_PAGE);
                 try {
-                    Thread.sleep(5000);
+                    Thread.sleep(Constants.WAIT_TIME_BETWEEN_CHECKS_MS);
                 } catch (InterruptedException e) {
                     logger.error(e);
                 }
