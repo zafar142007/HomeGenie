@@ -232,7 +232,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                         map.put(Constants.ABORT_REASON, "Target device not found");
                         return null;
                     }
-                    Thread.sleep(10000);
+                    Thread.sleep(20000);
                     Map<String, Double> byteConversion = new HashMap<>();
                     byteConversion.put("Kbyte", 1000.0);
                     byteConversion.put("Mbyte", 1000000.0);
