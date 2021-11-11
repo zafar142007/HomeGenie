@@ -239,6 +239,13 @@ public class RouterCrawlProvider extends CrawlProvider {
                     byteConversion.put("Gbyte", 1000000000.0);
                     List<DomNode> tiles = htmlPage.querySelectorAll("span.info");
                     for (DomNode tile : tiles) {
+                        if((tile.getVisibleText()).contains("Active")){ //wifi power saving mode is Active
+                            //TV is already off
+                            map.put(Constants.ABORT, true);
+                            map.put(Constants.ABORT_REASON, "Power saving mode on");
+                            break;
+                        }
+
                         if ((tile.getVisibleText()).contains("byte")) { // something like "111.3 Kbyte/121.0 MByte"
                             Map<Long, Map<String, Object>> result = new LinkedHashMap<>();
                             Map<String, Object> result1 = new HashMap<>();
@@ -255,7 +262,6 @@ public class RouterCrawlProvider extends CrawlProvider {
                                 r = result;
                             }
                             map.put(Constants.RESULT, r);
-                            break;
                         }
                     }
                 } catch (Exception e) {
