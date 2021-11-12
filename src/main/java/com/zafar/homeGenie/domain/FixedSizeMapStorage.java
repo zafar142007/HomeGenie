@@ -26,4 +26,7 @@ public class FixedSizeMapStorage<K, V, T extends Map<K, V>> {
         return storage.entrySet();
     }
 
+    public void clear() {
+        storage.clear();
+    }
 }

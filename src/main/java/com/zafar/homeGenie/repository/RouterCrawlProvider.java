@@ -256,6 +256,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                     byteConversion.put("Mbyte", 1000000.0);
                     byteConversion.put("Gbyte", 1000000000.0);
                     List<DomNode> tiles = htmlPage.querySelectorAll("span.info");
+                    Map<String, Double> dataTransferMetrics = null;
                     for (DomNode tile : tiles) {
 
                         if ((tile.getVisibleText()).contains("Active")) { //wifi power saving mode is Active
@@ -265,16 +266,21 @@ public class RouterCrawlProvider extends CrawlProvider {
                         }
 
                         if ((tile.getVisibleText()).contains("byte")) { // something like "111.3 Kbyte/121.0 MByte"
-                            Map<String, Double> dataTransferMetrics = new HashMap<>();
+                            dataTransferMetrics = new HashMap<>();
                             String unit = tile.getVisibleText().split("/")[0].split(" ")[1];
                             dataTransferMetrics.put("Rx", Double.parseDouble(tile.getVisibleText().split("/")[0].split(" ")[0]) * byteConversion.get(unit)); //put in bytes
                             unit = tile.getVisibleText().split("/")[1].split(" ")[1];
                             dataTransferMetrics.put("Tx", Double.parseDouble(tile.getVisibleText().split("/")[1].split(" ")[0]) * byteConversion.get(unit)); //in bytes
-                            FixedSizeMapStorage<Long, Map<String, Double>, TreeMap<Long, Map<String, Double>>> metrics =
-                                    (FixedSizeMapStorage<Long, Map<String, Double>, TreeMap<Long, Map<String, Double>>>) storage.get(Constants.DATA_METRICS);
-                            metrics.put(System.currentTimeMillis(), dataTransferMetrics);
                             logger.info("stats {}", dataTransferMetrics);
                         }
+                    }
+                    FixedSizeMapStorage<Long, Map<String, Double>, TreeMap<Long, Map<String, Double>>> metrics =
+                            (FixedSizeMapStorage<Long, Map<String, Double>, TreeMap<Long, Map<String, Double>>>) storage.get(Constants.DATA_METRICS);
+
+                    if (map.get(Constants.ABORT) == null) {//power saving mode is not on
+                       metrics.put(System.currentTimeMillis(), dataTransferMetrics);
+                    } else { //power saving mode is on so clear previous metrics
+                        metrics.clear();
                     }
                 } catch (Exception e) {
                     logger.error(e);
