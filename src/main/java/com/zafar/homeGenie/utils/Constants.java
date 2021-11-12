@@ -5,6 +5,8 @@ public interface Constants {
     String CURRENT_PAGE = "CURRENT_PAGE";
     String ROUTER_TV_POWER = "routerTvPower";
     String RESULT = "RESULT";
+    String DETECTIONS = "Detection";
+
     String TARGET_DEVICE = "samsung";
     double RX_THRESHOLD_BYTES = 1000;
     double TX_THRESHOLD_BYTES = 1000;
@@ -12,6 +14,7 @@ public interface Constants {
     String ABORT = "ABORT";
     String ABORT_REASON = "ABORT_REASON";
     String WEBCLIENT = "WEBCLIENT";
-    int NUMBER_OF_CONSECUTIVE_DETECTONS = 3;
-    long WAIT_TIME_BETWEEN_CHECKS_MS = 10000;
+    int NUMBER_OF_CONSECUTIVE_DETECTONS = 10;
+    long WAIT_TIME_BETWEEN_CHECKS_MS = 1000;
+    String DATA_METRICS = "dataMetrics";
 }

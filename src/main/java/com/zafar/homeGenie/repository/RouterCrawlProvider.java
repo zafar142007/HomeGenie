@@ -2,6 +2,7 @@ package com.zafar.homeGenie.repository;
 
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.*;
+import com.zafar.homeGenie.domain.FixedSizeMapStorage;
 import com.zafar.homeGenie.domain.ScrapeRequest;
 import com.zafar.homeGenie.domain.ScrapeResponse;
 import com.zafar.homeGenie.scraper.*;
@@ -33,7 +34,7 @@ public class RouterCrawlProvider extends CrawlProvider {
     @Autowired
     private CrawlRepository crawlRepository;
 
-    private Map<Long, Boolean> storage = new TreeMap<>();
+    private Map<String, Object> storage = new HashMap<>();
 
     @Autowired
     private Scraper scraper;
@@ -51,6 +52,8 @@ public class RouterCrawlProvider extends CrawlProvider {
     @PostConstruct
     public void init() {
         crawlRepository.putCrawl(getId(), this);
+        storage.put(Constants.DATA_METRICS, new FixedSizeMapStorage<Long, Map<String, Double>, TreeMap<Long, Map<String, Double>>>
+                (new TreeMap<>(Comparator.reverseOrder()), Constants.NUMBER_OF_CONSECUTIVE_DETECTONS + 1));// for 1 detection 2 measurements needed
         if (StringUtils.isNotEmpty(crawlSchedule)) {
             scheduleCrawl();
         }
@@ -92,7 +95,6 @@ public class RouterCrawlProvider extends CrawlProvider {
         crawlLoginPage(crawl);
         crawlHomePage(crawl);
         crawlStatsPage(crawl);
-        crawlStatsPage(crawl);//crawl again to find the difference in data consumed
         findIfTVIdle(crawl);//if the difference is high then TV is in use otherwise no
         switchOff(crawl); //if not in use switch it off
         return crawl;
@@ -112,34 +114,39 @@ public class RouterCrawlProvider extends CrawlProvider {
             public Void apply(Void unused) {
                 WebsiteCrawl.CrawlContext crawlContext = getContext();
                 Map<String, Object> map = crawlContext.getContextMap();
-                Map<Long, Map<String, Object>> readings = (Map<Long, Map<String, Object>>) map.get(Constants.RESULT);
+                Set<Map.Entry<Long, Map<String, Double>>> readings =
+                        ((FixedSizeMapStorage<Long, Map<String, Double>, TreeMap<Long, Map<String, Double>>>)
+                                storage.get(Constants.DATA_METRICS)).getEntrySet();
+
                 Long lastTimestamp = null;
-                double lastRx = 0, lastTx = 0, diffTime = 0, diffRx = 0, diffTx = 0, totalDiffRx = 0, totalDiffTx = 0, avgRx = 0, avgTx = 0;
-                for (Map.Entry<Long, Map<String, Object>> entry : readings.entrySet()) {
+                int consecutiveDetections = 0;
+                double lastRx = 0, lastTx = 0, diffTime = 0, diffRx = 0, diffTx = 0, rxRate = 0, txRate = 0, avgRx = 0, avgTx = 0;
+                for (Map.Entry<Long, Map<String, Double>> entry : readings) {
                     Long timestamp = entry.getKey();
                     if (lastTimestamp == null) {
                         lastTimestamp = timestamp;
-                        lastRx = (Double) entry.getValue().get("Rx");
-                        lastTx = (Double) entry.getValue().get("Tx");
+                        lastRx = entry.getValue().get("Rx");
+                        lastTx = entry.getValue().get("Tx");
                     } else {
-                        diffTime = (timestamp - lastTimestamp) / 1000.0;
-                        diffRx = (Double) entry.getValue().get("Rx") - lastRx;
-                        diffTx = (Double) entry.getValue().get("Tx") - lastTx;
-                        totalDiffRx = totalDiffRx + (diffRx / diffTime);
-                        totalDiffTx = totalDiffTx + (diffTx / diffTime);
+                        diffTime = (lastTimestamp - timestamp) / 1000.0;
+                        diffRx = lastRx - entry.getValue().get("Rx");
+                        diffTx = lastTx - entry.getValue().get("Tx");
+                        rxRate = (diffRx / diffTime);
+                        txRate = (diffTx / diffTime);
+                        lastTimestamp = timestamp;
+                        lastRx = entry.getValue().get("Rx");
+                        lastTx = entry.getValue().get("Tx");
+                        logger.info("timestamp {}, rxRate {} B/s, txRate {} B/s", lastTimestamp, rxRate, txRate);
+                        if (isTvOff(rxRate, txRate)) {
+                            consecutiveDetections++;
+                        } else break;
                     }
                 }
-                avgRx = totalDiffRx / (readings.size() - 1);
-                avgTx = totalDiffTx / (readings.size() - 1);
-                logger.info("avgRx {} B/s, avgTx {} B/s", avgRx, avgTx);
-                if (avgRx < Constants.RX_THRESHOLD_BYTES && avgTx < Constants.TX_THRESHOLD_BYTES) {
-                    logger.info("TV should be off");
-                    map.put(Constants.SHOULD_TV_BE_OFF, true);
-                    recordDetection(true);
+                logger.info("consecutive detections {}", consecutiveDetections);
+                if (consecutiveDetections >= Constants.NUMBER_OF_CONSECUTIVE_DETECTONS - 1) {
+                    map.put(Constants.SHOULD_TV_BE_OFF, Boolean.TRUE);
                 } else {
-                    logger.info("TV should not be off");
-                    recordDetection(false);
-                    map.put(Constants.SHOULD_TV_BE_OFF, false);
+                    map.put(Constants.SHOULD_TV_BE_OFF, Boolean.FALSE);
                 }
                 return null;
             }
@@ -148,14 +155,16 @@ public class RouterCrawlProvider extends CrawlProvider {
         crawl.addCrawlStep(idleCheck);
     }
 
-    private void recordDetection(boolean detection) {
-        if (storage.entrySet().size() > Constants.NUMBER_OF_CONSECUTIVE_DETECTONS) {
-            //remove earliest entry
-            Map.Entry<Long, Boolean> entry = storage.entrySet().stream().findFirst().get();
-            storage.remove(entry.getKey());
+    private boolean isTvOff(double rxRate, double txRate) {
+        if (rxRate < Constants.RX_THRESHOLD_BYTES && txRate < Constants.TX_THRESHOLD_BYTES) {
+            logger.info("TV should be off");
+            return true;
+        } else {
+            logger.info("TV should not be off");
+            return false;
         }
-        storage.put(System.currentTimeMillis(), detection);
     }
+
 
     private void switchOff(WebsiteCrawl crawl) {
         WebsiteCrawl.CrawlFunction turningOffTv = crawl.new CrawlFunction() {
@@ -164,38 +173,46 @@ public class RouterCrawlProvider extends CrawlProvider {
             public Void apply(Void unused) {
                 WebsiteCrawl.CrawlContext crawlContext = getContext();
                 Map<String, Object> map = crawlContext.getContextMap();
-                if ((Boolean) (map.get(Constants.SHOULD_TV_BE_OFF)) == true
-                        && storage.size() == Constants.NUMBER_OF_CONSECUTIVE_DETECTONS
-                        && storage.entrySet().stream().allMatch(e -> e.getValue())) {
+                if ((map.get(Constants.SHOULD_TV_BE_OFF)) == Boolean.TRUE) {
                     logger.info("turning off tv");
                     String key = readKey();
                     tvOffUrl = tvOffUrl.replace("[key]", key);
-                    org.springframework.web.reactive.function.client.WebClient webClient = org.springframework.web.reactive.function.client.WebClient.builder()
-                            .baseUrl(tvOffUrl)
-                            .build();
-                    Mono<ResponseEntity<String>> responseMono = webClient.get().retrieve().toEntity(String.class);
-                    ResponseEntity<String> response = responseMono.block(Duration.ofSeconds(10));
-                    if (response.getStatusCode() == HttpStatus.OK) {
-                        map.put(Constants.RESULT, true);
-                        logger.info("successfully triggered switch off");
-                    } else {
-                        map.put(Constants.RESULT, false);
-                        logger.error("failed to trigger switch off");
-
-                    }
+                    commandToTurnOff(map);
                 } else {
                     map.put(Constants.RESULT, false);
                 }
                 return null;
             }
         };
-        CrawlStep instructAlexa = new CrawlStep("turn_off_tv", turningOffTv);
+        CrawlStep instructAlexa = new CrawlStep("turnOffTv", turningOffTv);
         crawl.addCrawlStep(instructAlexa);
+    }
+
+    private void commandToTurnOff(Map<String, Object> map) {
+        org.springframework.web.reactive.function.client.WebClient webClient = org.springframework.web.reactive.function.client.WebClient.builder()
+                .baseUrl(tvOffUrl)
+                .build();
+        ResponseEntity<String> response = null;
+        try {
+            Mono<ResponseEntity<String>> responseMono = webClient.get().retrieve().toEntity(String.class);
+            response = responseMono.block(Duration.ofSeconds(10));
+        } catch (Exception e) {
+            logger.error("failed to trigger switch off", e);
+            map.put(Constants.RESULT, false);
+        }
+        if (response != null && response.getStatusCode() == HttpStatus.OK) {
+            map.put(Constants.RESULT, true);
+            logger.info("successfully triggered switch off");
+        } else {
+            map.put(Constants.RESULT, false);
+            logger.error("failed to trigger switch off");
+        }
+
     }
 
     private String readKey() {
         if (StringUtils.isEmpty(key)) {
-            InputStream keyFile = getClass().getClassLoader().getResourceAsStream("tv_off_key.txt");
+            InputStream keyFile = getClass().getClassLoader().getResourceAsStream("key.txt");
             Scanner scanner = new Scanner(keyFile);
             key = scanner.next();
             return key;
@@ -219,6 +236,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                     boolean flag = false;
                     List<DomNode> rows = htmlPage.querySelectorAll(".nw-mini-table-tr");
                     for (DomNode row : rows) {
+                        logger.info("row text: {}", row.getVisibleText());
                         if (row.getVisibleText().toLowerCase().contains(Constants.TARGET_DEVICE)) {
                             HtmlTableRow tableRow = (HtmlTableRow) row;
                             tableRow.click();
@@ -239,29 +257,23 @@ public class RouterCrawlProvider extends CrawlProvider {
                     byteConversion.put("Gbyte", 1000000000.0);
                     List<DomNode> tiles = htmlPage.querySelectorAll("span.info");
                     for (DomNode tile : tiles) {
-                        if((tile.getVisibleText()).contains("Active")){ //wifi power saving mode is Active
+
+                        if ((tile.getVisibleText()).contains("Active")) { //wifi power saving mode is Active
                             //TV is already off
                             map.put(Constants.ABORT, true);
                             map.put(Constants.ABORT_REASON, "Power saving mode on");
-                            break;
                         }
 
                         if ((tile.getVisibleText()).contains("byte")) { // something like "111.3 Kbyte/121.0 MByte"
-                            Map<Long, Map<String, Object>> result = new LinkedHashMap<>();
-                            Map<String, Object> result1 = new HashMap<>();
+                            Map<String, Double> dataTransferMetrics = new HashMap<>();
                             String unit = tile.getVisibleText().split("/")[0].split(" ")[1];
-                            result1.put("Rx", Double.parseDouble(tile.getVisibleText().split("/")[0].split(" ")[0]) * byteConversion.get(unit)); //put in bytes
+                            dataTransferMetrics.put("Rx", Double.parseDouble(tile.getVisibleText().split("/")[0].split(" ")[0]) * byteConversion.get(unit)); //put in bytes
                             unit = tile.getVisibleText().split("/")[1].split(" ")[1];
-                            result1.put("Tx", Double.parseDouble(tile.getVisibleText().split("/")[1].split(" ")[0]) * byteConversion.get(unit)); //in bytes
-                            result.put(System.currentTimeMillis(), result1);
-                            logger.info("stats {}", result1);
-                            Map<Long, Map<String, Object>> r = (Map<Long, Map<String, Object>>) (map.get(Constants.RESULT));
-                            if (r != null) {
-                                r.putAll(result);
-                            } else {
-                                r = result;
-                            }
-                            map.put(Constants.RESULT, r);
+                            dataTransferMetrics.put("Tx", Double.parseDouble(tile.getVisibleText().split("/")[1].split(" ")[0]) * byteConversion.get(unit)); //in bytes
+                            FixedSizeMapStorage<Long, Map<String, Double>, TreeMap<Long, Map<String, Double>>> metrics =
+                                    (FixedSizeMapStorage<Long, Map<String, Double>, TreeMap<Long, Map<String, Double>>>) storage.get(Constants.DATA_METRICS);
+                            metrics.put(System.currentTimeMillis(), dataTransferMetrics);
+                            logger.info("stats {}", dataTransferMetrics);
                         }
                     }
                 } catch (Exception e) {
