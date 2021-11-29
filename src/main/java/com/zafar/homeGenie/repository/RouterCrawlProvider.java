@@ -125,6 +125,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                     Long timestamp = entry.getKey();
                     if (lastTimestamp == null) {
                         lastTimestamp = timestamp;
+                        logger.info("entry value: {}", entry.getValue());
                         lastRx = entry.getValue().get("Rx");
                         lastTx = entry.getValue().get("Tx");
                     } else {
@@ -227,16 +228,25 @@ public class RouterCrawlProvider extends CrawlProvider {
                 WebsiteCrawl.CrawlContext crawlContext = getContext();
                 Map<String, Object> map = crawlContext.getContextMap();
                 HtmlPage htmlPage = (HtmlPage) map.get(Constants.CURRENT_PAGE);
-                try {
-                    Thread.sleep(Constants.WAIT_TIME_BETWEEN_CHECKS_MS);
-                } catch (InterruptedException e) {
-                    logger.error(e);
+                if (htmlPage == null) {
+                    logger.info("Html page null, aborting");
+                    map.put(Constants.ABORT, true);
+                    map.put(Constants.ABORT_REASON, "html page null");
+                    return null;
                 }
+
                 try {
                     boolean flag = false;
-                    List<DomNode> rows = htmlPage.querySelectorAll(".nw-mini-table-tr");
+                    List<DomNode> rows = null;
+                    for (int i = 0; i < 20 && (rows == null || (rows != null && rows.isEmpty()) || rows.stream().anyMatch(r -> r.getVisibleText().contains("{{"))); i++) {
+                        rows = htmlPage.querySelectorAll(".nw-mini-table-tr");
+                        logger.info("rows in {}: {}", htmlPage.getTitleText(), rows.size());
+                        if (rows == null || (rows != null && rows.isEmpty()) || rows.stream().anyMatch(r -> r.getVisibleText().contains("{{"))) {
+                            htmlPage.getWebClient().waitForBackgroundJavaScript(2000);
+                        }
+                    }
                     for (DomNode row : rows) {
-                        logger.info("row text: {}", row.getVisibleText());
+                        logger.info("row text in crawl page: {}", row.getVisibleText());
                         if (row.getVisibleText().toLowerCase().contains(Constants.TARGET_DEVICE)) {
                             HtmlTableRow tableRow = (HtmlTableRow) row;
                             tableRow.click();
@@ -250,14 +260,26 @@ public class RouterCrawlProvider extends CrawlProvider {
                         map.put(Constants.ABORT_REASON, "Target device not found");
                         return null;
                     }
-                    Thread.sleep(20000);
+
                     Map<String, Double> byteConversion = new HashMap<>();
                     byteConversion.put("Kbyte", 1000.0);
                     byteConversion.put("Mbyte", 1000000.0);
                     byteConversion.put("Gbyte", 1000000000.0);
-                    List<DomNode> tiles = htmlPage.querySelectorAll("span.info");
+                    List<DomNode> tiles = null;
+                    for (int i = 0; i < 10; i++) {
+                        tiles = htmlPage.querySelectorAll("span.info");
+                        if (tiles == null || (tiles != null && tiles.isEmpty())) {
+                            logger.info("waiting for stats popup to load");
+                            htmlPage.getWebClient().waitForBackgroundJavaScript(2000);
+                        } else {
+                            logger.info("stats popup tiles: {}", tiles.size());
+                            break;
+                        }
+                    }
                     Map<String, Double> dataTransferMetrics = null;
+                    boolean fl = false;
                     for (DomNode tile : tiles) {
+                        logger.info("tile row after clicking :{}", tile.getVisibleText());
 
                         if ((tile.getVisibleText()).contains("Active")) { //wifi power saving mode is Active
                             //TV is already off
@@ -266,19 +288,25 @@ public class RouterCrawlProvider extends CrawlProvider {
                         }
 
                         if ((tile.getVisibleText()).contains("byte")) { // something like "111.3 Kbyte/121.0 MByte"
+                            logger.info("adding reading to observed map {}", tile.getVisibleText());
                             dataTransferMetrics = new HashMap<>();
                             String unit = tile.getVisibleText().split("/")[0].split(" ")[1];
                             dataTransferMetrics.put("Rx", Double.parseDouble(tile.getVisibleText().split("/")[0].split(" ")[0]) * byteConversion.get(unit)); //put in bytes
                             unit = tile.getVisibleText().split("/")[1].split(" ")[1];
                             dataTransferMetrics.put("Tx", Double.parseDouble(tile.getVisibleText().split("/")[1].split(" ")[0]) * byteConversion.get(unit)); //in bytes
                             logger.info("stats {}", dataTransferMetrics);
+                            fl = true;
                         }
+                    }
+                    if (!fl) {
+                        map.put(Constants.ABORT, true);
+                        map.put(Constants.ABORT_REASON, "data metrics not found");
                     }
                     FixedSizeMapStorage<Long, Map<String, Double>, TreeMap<Long, Map<String, Double>>> metrics =
                             (FixedSizeMapStorage<Long, Map<String, Double>, TreeMap<Long, Map<String, Double>>>) storage.get(Constants.DATA_METRICS);
 
                     if (map.get(Constants.ABORT) == null) {//power saving mode is not on
-                       metrics.put(System.currentTimeMillis(), dataTransferMetrics);
+                        metrics.put(System.currentTimeMillis(), dataTransferMetrics);
                     } else { //power saving mode is on so clear previous metrics
                         metrics.clear();
                     }
@@ -303,28 +331,34 @@ public class RouterCrawlProvider extends CrawlProvider {
                 WebsiteCrawl.CrawlContext crawlContext = getContext();
                 Map<String, Object> map = crawlContext.getContextMap();
                 HtmlPage htmlPage = (HtmlPage) map.get(Constants.CURRENT_PAGE);
+
                 try {
-                    Thread.sleep(6000);
-                } catch (InterruptedException e) {
-                    logger.error(e);
-                }
-                try {
-                    List<DomNode> rows = htmlPage.querySelectorAll("span.menu_item");
+                    List<DomNode> rows = null;
                     HtmlPage page = null;
-                    for (DomNode row : rows) {
-                        if (row.getVisibleText().toLowerCase().contains("wi-fi")) {
-                            HtmlSpan span = (HtmlSpan) row;
-                            page = span.click();
-                            logger.info("Span clicked");
-                            List<DomNode> anchors = page.querySelectorAll("a.menu_item");
-                            for (DomNode anchor : anchors) {
-                                if (anchor.getVisibleText().toLowerCase().contains("client management")) {
-                                    page = ((HtmlAnchor) anchor).click();
-                                    logger.info("Anchor clicked");
-                                    break;
+                    boolean isFound = false;
+                    for (int i = 0; i < Constants.RETRY_OPERATION && !isFound; i++) {
+                        logger.info("waiting for home page to load");
+                        htmlPage.getWebClient().waitForBackgroundJavaScript(2000);
+                        rows = htmlPage.querySelectorAll("span.menu_item");
+                        logger.info("rows size {}", rows.size());
+
+                        for (DomNode row : rows) {
+                            logger.info("row in home page: {}", row.getVisibleText());
+                            if (row.getVisibleText().toLowerCase().contains("wi-fi")) {
+                                isFound = true;
+                                HtmlSpan span = (HtmlSpan) row;
+                                page = span.click();
+                                logger.info("Span clicked");
+                                List<DomNode> anchors = page.querySelectorAll("a.menu_item");
+                                for (DomNode anchor : anchors) {
+                                    if (anchor.getVisibleText().toLowerCase().contains("client management")) {
+                                        page = ((HtmlAnchor) anchor).click();
+                                        logger.info("Anchor clicked");
+                                        break;
+                                    }
                                 }
+                                break;
                             }
-                            break;
                         }
                     }
                     map.put(Constants.CURRENT_PAGE, page);
@@ -358,14 +392,25 @@ public class RouterCrawlProvider extends CrawlProvider {
                     return null;
                 }
 
+                HtmlTextInput name = null;
+                HtmlPasswordInput pass = null;
+                List<DomNode> buttons = null;
                 try {
-                    Thread.sleep(6000);
-                } catch (InterruptedException e) {
+                    for (int i = 0; i < Constants.RETRY_OPERATION; i++) {
+                        name = htmlPage.querySelector("[name=login_name]");
+                        pass = htmlPage.querySelector("[name=login_password]");
+                        buttons = htmlPage.querySelectorAll("[type=submit]");
+
+                        if (name == null || pass == null || buttons == null) {
+                            logger.info("waiting for login page to load");
+                            htmlPage.getWebClient().waitForBackgroundJavaScript(2000);
+                        } else {
+                            break;
+                        }
+                    }
+                } catch (Exception e) {
                     logger.error(e);
                 }
-                HtmlTextInput name = htmlPage.querySelector("[name=login_name]");
-                HtmlPasswordInput pass = htmlPage.querySelector("[name=login_password]");
-                List<DomNode> buttons = htmlPage.querySelectorAll("[type=submit]");
                 try {
                     name.type("admin");
                     pass.type("password");
