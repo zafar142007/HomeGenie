@@ -242,7 +242,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                         rows = htmlPage.querySelectorAll(".nw-mini-table-tr");
                         logger.info("rows in {}: {}", htmlPage.getTitleText(), rows.size());
                         if (rows == null || (rows != null && rows.isEmpty()) || rows.stream().anyMatch(r -> r.getVisibleText().contains("{{"))) {
-                            htmlPage.getWebClient().waitForBackgroundJavaScript(2000);
+                            htmlPage.getWebClient().waitForBackgroundJavaScript(2500);
                         }
                     }
                     for (DomNode row : rows) {
