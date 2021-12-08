@@ -179,6 +179,12 @@ public class RouterCrawlProvider extends CrawlProvider {
                     String key = readKey();
                     tvOffUrl = tvOffUrl.replace("[key]", key);
                     commandToTurnOff(map);
+                    if (map.get(Constants.RESULT) == Boolean.TRUE) {
+                        FixedSizeMapStorage<Long, Map<String, Double>, TreeMap<Long, Map<String, Double>>> metrics =
+                                (FixedSizeMapStorage<Long, Map<String, Double>, TreeMap<Long, Map<String, Double>>>) storage.get(Constants.DATA_METRICS);
+                        logger.info("clearing metrics");
+                        metrics.clear();
+                    }
                 } else {
                     map.put(Constants.RESULT, false);
                 }
@@ -238,7 +244,12 @@ public class RouterCrawlProvider extends CrawlProvider {
                 try {
                     boolean flag = false;
                     List<DomNode> rows = null;
-                    for (int i = 0; i < 20 && (rows == null || (rows != null && rows.isEmpty()) || rows.stream().anyMatch(r -> r.getVisibleText().contains("{{"))); i++) {
+                    for (int i = 0; i < 20 &&
+                            (rows == null ||
+                                    (rows != null && rows.isEmpty())
+                                    || rows.stream().anyMatch(r -> r.getVisibleText().contains("{{"))
+                                    || (rows.stream().noneMatch(row -> row.getVisibleText().toLowerCase().contains(Constants.TARGET_DEVICE))))
+                            ; i++) {
                         rows = htmlPage.querySelectorAll(".nw-mini-table-tr");
                         logger.info("rows in {}: {}", htmlPage.getTitleText(), rows.size());
                         if (rows == null || (rows != null && rows.isEmpty()) || rows.stream().anyMatch(r -> r.getVisibleText().contains("{{"))) {
