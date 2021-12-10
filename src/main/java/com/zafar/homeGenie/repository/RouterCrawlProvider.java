@@ -279,7 +279,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                     List<DomNode> tiles = null;
                     for (int i = 0; i < 10; i++) {
                         tiles = htmlPage.querySelectorAll("span.info");
-                        if (tiles == null || (tiles != null && tiles.isEmpty())) {
+                        if (tiles == null || (tiles != null && tiles.isEmpty()) || (tiles.stream().noneMatch(t->t.getVisibleText().contains("byte")))) {
                             logger.info("waiting for stats popup to load");
                             htmlPage.getWebClient().waitForBackgroundJavaScript(2000);
                         } else {
