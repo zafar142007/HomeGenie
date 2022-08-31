@@ -44,6 +44,9 @@ public class RouterCrawlProvider extends CrawlProvider {
 
     @Value("${" + Constants.ROUTER_TV_POWER + ".crawl.schedule}")
     private String crawlSchedule;
+    
+    @Value("${" + Constants.ROUTER_TV_POWER + "loginPage.url}")
+    private String loginPageUrl;
 
     private String key;
 
@@ -395,7 +398,7 @@ public class RouterCrawlProvider extends CrawlProvider {
                 WebClient webClient = (WebClient) map.get(Constants.WEBCLIENT);
                 HtmlPage htmlPage = null;
                 try {
-                    htmlPage = webClient.getPage(new URL("http://192.168.0.1"));
+                    htmlPage = webClient.getPage(new URL(loginPageUrl));
                 } catch (IOException e) {
                     e.printStackTrace();
                     map.put(Constants.ABORT, true);
