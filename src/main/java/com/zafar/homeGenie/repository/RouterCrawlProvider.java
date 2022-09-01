@@ -45,7 +45,7 @@ public class RouterCrawlProvider extends CrawlProvider {
     @Value("${" + Constants.ROUTER_TV_POWER + ".crawl.schedule}")
     private String crawlSchedule;
     
-    @Value("${" + Constants.ROUTER_TV_POWER + "loginPage.url}")
+    @Value("${" + Constants.ROUTER_TV_POWER + ".loginPage.url}")
     private String loginPageUrl;
 
     private String key;
