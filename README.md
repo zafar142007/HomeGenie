@@ -9,7 +9,7 @@ The scraper scrapes the home router's portal at periodic intervals to detect the
 2. Create a webhook applet on https://ifttt.com/maker_webhooks. For free accounts you can only have 3 applets. For the specified applet event name you would receive a key.
 3. Connect your webhook applet to an action like switching off your TV. For this I used Samsung SmartThings.
 4. Get the webhook address and append your key to get the url you would hit for switching off your TV.
-5. Put the key into the application resources folder with the file name tv_off_key.txt.
+5. Put the key into the application resources folder with the file name key.txt.
 6. Build the project using maven.
 7. Run the project's jar file.
 
